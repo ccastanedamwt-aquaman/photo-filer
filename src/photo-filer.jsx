@@ -453,7 +453,7 @@ export default function PhotoFiler() {
     var nm = acn.trim();
     if (!nm) return;
     if (chains.find(function (c) { return c.name.toLowerCase() === nm.toLowerCase(); })) { showT("Already exists", "err"); return; }
-    setChains(function (p) { return p.concat([{ name: nm, stores: [] }]); });
+    setChains(function (p) { return p.concat([{ name: nm, stores: [] }]).sort(function (a, b) { return a.name.localeCompare(b.name); }); });
     setAcn(""); showT("Added " + nm, "ok");
   }
 
@@ -468,7 +468,7 @@ export default function PhotoFiler() {
       return p.map(function (ch) {
         if (ch.name !== mchain) return ch;
         if ((ch.stores || []).find(function (s) { return s.number === asn.trim(); })) return ch;
-        return Object.assign({}, ch, { stores: (ch.stores || []).concat([{ number: asn.trim(), city: asc.trim() || "Las Vegas", state: ass || "NV" }]) });
+        return Object.assign({}, ch, { stores: (ch.stores || []).concat([{ number: asn.trim(), city: asc.trim() || "Las Vegas", state: ass || "NV" }]).sort(function (a, b) { return a.number.localeCompare(b.number, undefined, { numeric: true }); }) });
       });
     });
     showT("Added #" + asn.trim(), "ok"); setAsn(""); setAsc("");
