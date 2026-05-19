@@ -63,36 +63,60 @@ function saveData(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
 }
 
-var GAPI_LOADED = false;
 var GTOKEN = null;
+var GIS_LOADED = false;
+var GAPI_CLIENT_LOADED = false;
 
 function getClientId() {
   if (typeof window !== "undefined" && window.GOOGLE_CLIENT_ID) return window.GOOGLE_CLIENT_ID;
   return "";
 }
 
-function loadGapi(cb) {
-  if (GAPI_LOADED) { cb(); return; }
-  var cid = getClientId();
-  if (!cid) { cb("no_client_id"); return; }
+function loadGIS(cb) {
+  if (GIS_LOADED) { cb(); return; }
+  var sc = document.createElement("script");
+  sc.src = "https://accounts.google.com/gsi/client";
+  sc.onload = function () { GIS_LOADED = true; cb(); };
+  sc.onerror = function () { cb("gis_error"); };
+  document.body.appendChild(sc);
+}
+
+function loadGapiClient(cb) {
+  if (GAPI_CLIENT_LOADED) { cb(); return; }
   var sc = document.createElement("script");
   sc.src = "https://apis.google.com/js/api.js";
   sc.onload = function () {
-    window.gapi.load("client:auth2", function () {
-      window.gapi.client.init({ clientId: cid, scope: "https://www.googleapis.com/auth/drive.file", discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"] })
-        .then(function () { GAPI_LOADED = true; cb(); })
-        .catch(function (err) { cb(err); });
+    window.gapi.load("client", function () {
+      window.gapi.client.init({ discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"] })
+        .then(function () { GAPI_CLIENT_LOADED = true; cb(); })
+        .catch(function (e) { cb(e); });
     });
   };
-  sc.onerror = function () { cb("script_error"); };
+  sc.onerror = function () { cb("gapi_error"); };
   document.body.appendChild(sc);
 }
 
 function gSignIn(cb) {
-  if (!GAPI_LOADED) { loadGapi(function (e) { if (e) { cb(e); return; } gSignIn(cb); }); return; }
-  var ai = window.gapi.auth2.getAuthInstance();
-  if (ai.isSignedIn.get()) { GTOKEN = ai.currentUser.get().getAuthResponse().access_token; cb(null); }
-  else { ai.signIn().then(function () { GTOKEN = ai.currentUser.get().getAuthResponse().access_token; cb(null); }).catch(function (e) { cb(e); }); }
+  var cid = getClientId();
+  if (!cid) { cb("no_client_id"); return; }
+  loadGIS(function (e1) {
+    if (e1) { cb(e1); return; }
+    loadGapiClient(function (e2) {
+      if (e2) { cb(e2); return; }
+      if (GTOKEN) { window.gapi.client.setToken({ access_token: GTOKEN }); cb(null); return; }
+      var client = window.google.accounts.oauth2.initTokenClient({
+        client_id: cid,
+        scope: "https://www.googleapis.com/auth/drive.file",
+        callback: function (resp) {
+          if (resp && resp.error) { cb(resp.error); return; }
+          GTOKEN = resp.access_token;
+          window.gapi.client.setToken({ access_token: GTOKEN });
+          cb(null);
+        },
+      });
+      client.requestAccessToken();
+    });
+  });
 }
 
 function findOrMakeFolder(pid, name, cb) {
@@ -325,8 +349,7 @@ export default function PhotoFiler() {
   }, [chains, search]);
 
   useEffect(function () {
-    var cid = getClientId();
-    if (cid) { loadGapi(function (e) { if (e) return; try { var a = window.gapi.auth2.getAuthInstance(); if (a && a.isSignedIn.get()) { GTOKEN = a.currentUser.get().getAuthResponse().access_token; setDriveOk(true); } } catch (x) {} }); }
+    // GIS does not persist tokens - sign in happens on first upload
   }, []);
 
   function handleCap(e) {
